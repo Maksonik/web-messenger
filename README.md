@@ -12,6 +12,11 @@ replies, reactions, mentions, attachments, group management and moderation.
 
 [![Demo video](docs/screenshots/demo-preview.jpg)](docs/demo.mp4)
 
+
+https://github.com/user-attachments/assets/81936c79-113d-44cc-9641-ff56d58ed2f8
+
+
+
 ▶ [Watch the video (docs/demo.mp4)](docs/demo.mp4)
 
 ## Quick start
