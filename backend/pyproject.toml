@@ -7,7 +7,9 @@ dependencies = [
     "alembic>=1.20.1",
     "asyncpg>=0.32.0",
     "fastapi>=0.162.0",
+    "pwdlib[argon2]>=0.3.1",
     "pydantic-settings>=2.16.1",
+    "pyjwt>=2.15.1",
     "redis>=8.1.0",
     "sqlalchemy[asyncio]>=2.1.6",
     "uvicorn[standard]>=0.54.0",
@@ -33,3 +35,7 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC"]
+
+[tool.ruff.lint.isort]
+# The local alembic/ migrations folder would otherwise make ruff treat it as first-party.
+known-third-party = ["alembic"]

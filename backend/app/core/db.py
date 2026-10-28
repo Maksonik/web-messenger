@@ -32,3 +32,8 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
+
+
+def escape_like(value: str) -> str:
+    """Escapes LIKE wildcards; use with `.ilike(pattern, escape="\\\\")`."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")

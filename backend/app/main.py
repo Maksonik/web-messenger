@@ -1,9 +1,9 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 
-from app.api import health
+from app.api import auth, health, users
 from app.core.config import settings
 from app.core.db import engine
 from app.core.redis import redis_client
@@ -18,7 +18,13 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     app = FastAPI(title=settings.app_name, debug=settings.debug, lifespan=lifespan)
+
+    api = APIRouter(prefix="/api")
+    api.include_router(auth.router)
+    api.include_router(users.router)
+
     app.include_router(health.router)
+    app.include_router(api)
     return app
 
 
