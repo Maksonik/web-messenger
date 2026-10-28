@@ -4,16 +4,19 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.api import auth, chats, health, messages, users
+from app.api import auth, chats, health, messages, users, ws
 from app.core.config import settings
 from app.core.db import engine
 from app.core.redis import redis_client
+from app.realtime.bus import event_bus
 from app.services.errors import ServiceError
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    await event_bus.start()
     yield
+    await event_bus.stop()
     await redis_client.aclose()
     await engine.dispose()
 
@@ -31,6 +34,7 @@ def create_app() -> FastAPI:
     api.include_router(users.router)
     api.include_router(chats.router)
     api.include_router(messages.router)
+    api.include_router(ws.router)
 
     app.include_router(health.router)
     app.include_router(api)

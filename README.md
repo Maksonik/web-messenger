@@ -3,20 +3,30 @@ Real-time web messenger with private and group chats, message history, WebSocket
 
 ## Stack
 
-- **Backend:** FastAPI, SQLAlchemy 2 (async) + PostgreSQL, Alembic, Redis
-- **Frontend:** React + Vite (coming later)
-- **Infra:** Docker Compose
+- **Backend:** FastAPI, SQLAlchemy 2 (async) + PostgreSQL, Alembic, Redis (pub/sub)
+- **Frontend:** React + Vite + TypeScript
+- **Infra:** Docker Compose, Caddy (serves the frontend and proxies `/api` to the backend)
 
 ## Project layout
 
 ```
 backend/
   app/
-    api/        HTTP routers
-    core/       settings, database, redis
+    api/        HTTP and WebSocket routers
+    core/       settings, database, redis, security
     models/     SQLAlchemy models
+    schemas/    Pydantic request/response models
+    services/   business logic shared by REST and WebSocket
+    realtime/   event bus (Redis pub/sub → WebSocket connections)
   alembic/      database migrations
   tests/
+frontend/
+  src/
+    api.ts            REST client (access token in memory, refresh via cookie)
+    realtime.ts       WebSocket client with auto-reconnect
+    messagesState.ts  messages reducer (history, pending messages)
+    components/       UI
+  Caddyfile           production web server config
 docker-compose.yml
 ```
 
@@ -49,15 +59,30 @@ docker-compose.yml
   newest first (backed by a `pg_trgm` GIN index).
 - `GET /api/chats` includes each chat's `last_message` and is ordered by last activity.
 
+## Realtime (WebSocket `/api/ws`)
+
+One connection per browser tab carries events for all of the user's chats.
+
+1. The client sends `{"type": "auth", "token": "<access token>"}`; the server answers `auth.ok`
+   or closes the socket with code `4401`.
+2. `{"type": "message.send", "chat_id", "text", "client_msg_id"}` stores the message and
+   answers `message.ack` (status "delivered to the server"); all chat members then get
+   `message.new`. Errors come back as `error` events carrying the `client_msg_id`.
+3. Chat changes (created, renamed, members added/removed) are announced as `chat.updated`.
+
+Events are fanned out through Redis pub/sub, so several backend processes can serve
+WebSockets at once. The frontend keeps unconfirmed messages and resends them after a
+reconnect; `client_msg_id` makes that safe from duplicates.
+
 ## Running with Docker
 
 ```bash
 cp .env.example .env   # then set JWT_SECRET
 docker compose up -d --build
-curl http://127.0.0.1:8000/health/ready
 ```
 
-API docs: http://127.0.0.1:8000/docs
+- App: http://localhost:8080
+- API docs: http://127.0.0.1:8000/docs
 
 ## Local development
 
@@ -72,6 +97,15 @@ uv run alembic upgrade head
 uv run uvicorn app.main:app --reload
 ```
 
+Frontend (Node 24+), in another terminal; Vite proxies `/api` (and the WebSocket) to
+`http://127.0.0.1:8000`, override with `BACKEND_URL`:
+
+```bash
+cd frontend
+npm install
+npm run dev        # http://localhost:5173
+```
+
 ### Tests and linting
 
 Tests expect Postgres and Redis from `docker compose` to be running. They use a separate
@@ -81,6 +115,10 @@ Tests expect Postgres and Redis from `docker compose` to be running. They use a 
 cd backend
 uv run pytest
 uv run ruff check . && uv run ruff format --check .
+
+cd ../frontend
+npm run build      # type-check + production build
+npm run lint && npm run format:check
 ```
 
 ### Migrations

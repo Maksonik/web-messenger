@@ -5,6 +5,7 @@ from fastapi import APIRouter, Query, Response, status
 from app.api.deps import CurrentUser
 from app.core.db import SessionDep
 from app.models import Message
+from app.realtime.events import notify_new_message
 from app.schemas.message import MessageCreate, MessagePage, MessageRead
 from app.services import messages as messages_service
 
@@ -57,6 +58,8 @@ async def send_message(
     message, created = await messages_service.send_message(
         session, chat_id, user, data.text, data.client_msg_id
     )
-    if not created:
+    if created:
+        await notify_new_message(session, message)
+    else:
         response.status_code = status.HTTP_200_OK
     return message

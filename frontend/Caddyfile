@@ -1,0 +1,15 @@
+# Serves the built SPA and proxies the API (including the WebSocket) to the backend,
+# so the browser sees a single origin, just like with the Vite dev proxy.
+:80 {
+	encode gzip
+
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
