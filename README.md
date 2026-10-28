@@ -7,12 +7,6 @@ and basic moderation. Course project for VK Education.
 
 ## Demo video
 
-Two users side by side (1:48, no sound): registration, real-time delivery, read receipts,
-replies, reactions, mentions, attachments, group management and moderation.
-
-[![Demo video](docs/screenshots/demo-preview.jpg)](docs/demo.mp4)
-
-
 https://github.com/user-attachments/assets/81936c79-113d-44cc-9641-ff56d58ed2f8
 
 
