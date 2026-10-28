@@ -1,8 +1,11 @@
-import { useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
+import { ApiError } from '../api'
 import type { ChatHistory } from '../messagesState'
-import type { Chat, Message, PendingMessage, User } from '../types'
+import type { Attachment, Chat, Message, PendingMessage, User } from '../types'
 import { chatAvatarSeed, chatPeer, chatTitle, formatTime, pluralMembers } from '../utils'
 import { Avatar } from './Avatar'
+import { Composer } from './Composer'
+import { AttachmentList, MessageBubble, MessageText, ReplyQuote } from './MessageBubble'
 import { MessageSearch } from './MessageSearch'
 
 interface Props {
@@ -10,9 +13,13 @@ interface Props {
   me: User
   history: ChatHistory | undefined
   pending: PendingMessage[]
-  onSend: (text: string) => void
+  onSend: (text: string, attachments: Attachment[], replyTo: Message | null) => void
   onRetry: (clientMsgId: string) => void
   onLoadMore: () => void
+  onEdit: (message: Message, text: string) => Promise<unknown>
+  onDelete: (message: Message) => Promise<unknown>
+  onReact: (message: Message, emoji: string, on: boolean) => Promise<unknown>
+  onToggleMute: () => Promise<unknown>
   onOpenMembers: () => void
   onBack: () => void
 }
@@ -23,11 +30,16 @@ const STICK_THRESHOLD = 80
 export function ChatView(props: Props) {
   const { chat, me, history, pending } = props
   const [draft, setDraft] = useState('')
+  const [replyTo, setReplyTo] = useState<Message | null>(null)
+  const [editing, setEditing] = useState<Message | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   const stickToBottom = useRef(true)
   // Scroll position saved before loading older messages, restored after they render.
   const anchor = useRef<{ height: number; top: number } | null>(null)
+  // The unsent draft, kept aside while editing another message.
+  const savedDraft = useRef('')
 
   const items = history?.items ?? []
   const title = chatTitle(chat, me.id)
@@ -35,6 +47,8 @@ export function ChatView(props: Props) {
     chat.type === 'group'
       ? pluralMembers(chat.members.length)
       : `@${chatPeer(chat, me.id)?.username ?? ''}`
+  const isAdmin =
+    chat.type === 'group' && chat.members.some((m) => m.user.id === me.id && m.role === 'admin')
 
   useLayoutEffect(() => {
     const list = listRef.current
@@ -59,20 +73,36 @@ export function ChatView(props: Props) {
     props.onLoadMore()
   }
 
-  function submit(event?: FormEvent) {
-    event?.preventDefault()
-    const text = draft.trim()
-    if (!text) return
-    stickToBottom.current = true
-    props.onSend(text)
-    setDraft('')
+  function jumpTo(messageId: number) {
+    const element = listRef.current?.querySelector(`[data-message-id="${messageId}"]`)
+    if (!element) {
+      setNotice('Сообщение выше по истории — нажмите «Загрузить ещё»')
+      return
+    }
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    element.classList.add('flash')
+    window.setTimeout(() => element.classList.remove('flash'), 1200)
   }
 
-  function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-      event.preventDefault()
-      submit()
+  async function run(action: () => Promise<unknown>) {
+    try {
+      await action()
+    } catch (err) {
+      setNotice(err instanceof ApiError ? err.message : 'Нет связи с сервером')
     }
+  }
+
+  function startEdit(message: Message) {
+    if (!editing) savedDraft.current = draft
+    setReplyTo(null)
+    setEditing(message)
+    setDraft(message.text)
+  }
+
+  function stopEdit() {
+    setEditing(null)
+    setDraft(savedDraft.current)
+    savedDraft.current = ''
   }
 
   return (
@@ -86,6 +116,13 @@ export function ChatView(props: Props) {
           <div className="chat-title">{title}</div>
           <div className="muted">{subtitle}</div>
         </div>
+        <button
+          className="icon-button"
+          onClick={() => run(props.onToggleMute)}
+          title={chat.muted ? 'Включить уведомления' : 'Выключить уведомления'}
+        >
+          {chat.muted ? '🔕' : '🔔'}
+        </button>
         <button
           className={`icon-button${searchOpen ? ' active' : ''}`}
           onClick={() => setSearchOpen((open) => !open)}
@@ -116,15 +153,33 @@ export function ChatView(props: Props) {
             <MessageBubble
               key={message.id}
               message={message}
-              mine={message.sender?.id === me.id}
+              meId={me.id}
+              members={chat.members}
               showAuthor={
                 chat.type === 'group' && items[index - 1]?.sender?.id !== message.sender?.id
               }
+              canDelete={message.sender?.id === me.id || isAdmin}
+              onReply={() => {
+                if (editing) stopEdit()
+                setReplyTo(message)
+              }}
+              onEdit={() => startEdit(message)}
+              onDelete={() => {
+                if (window.confirm('Удалить сообщение?')) void run(() => props.onDelete(message))
+              }}
+              onToggleReaction={(emoji, on) => run(() => props.onReact(message, emoji, on))}
+              onJumpTo={jumpTo}
             />
           ))}
           {pending.map((p) => (
             <div key={p.clientMsgId} className="bubble mine pending">
-              <div className="bubble-text">{p.text}</div>
+              {p.replyTo && <ReplyQuote reply={p.replyTo} onClick={() => jumpTo(p.replyTo!.id)} />}
+              <AttachmentList attachments={p.attachments} />
+              {p.text && (
+                <div className="bubble-text">
+                  <MessageText text={p.text} members={chat.members} />
+                </div>
+              )}
               <div className="bubble-meta">
                 {p.status === 'failed' ? (
                   <button
@@ -132,7 +187,7 @@ export function ChatView(props: Props) {
                     onClick={() => props.onRetry(p.clientMsgId)}
                     title={p.error}
                   >
-                    ⚠ не отправлено — повторить
+                    ⚠ {p.error ?? 'не отправлено'} — повторить
                   </button>
                 ) : (
                   <span title="Отправляется">{formatTime(p.createdAt)} 🕓</span>
@@ -145,46 +200,37 @@ export function ChatView(props: Props) {
         {searchOpen && <MessageSearch chatId={chat.id} onClose={() => setSearchOpen(false)} />}
       </div>
 
-      <form className="composer" onSubmit={submit}>
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder="Сообщение"
-          rows={1}
-          maxLength={4000}
-          autoFocus
-        />
-        <button className="primary" type="submit" disabled={!draft.trim()}>
-          Отправить
-        </button>
-      </form>
-    </section>
-  )
-}
-
-function MessageBubble({
-  message,
-  mine,
-  showAuthor,
-}: {
-  message: Message
-  mine: boolean
-  showAuthor: boolean
-}) {
-  return (
-    <div className={`bubble${mine ? ' mine' : ''}`}>
-      {showAuthor && !mine && (
-        <div className="bubble-author">
-          {message.sender?.display_name ?? 'Удалённый пользователь'}
+      {notice && (
+        <div className="notice" role="status">
+          <span className="grow">{notice}</span>
+          <button className="icon-button" onClick={() => setNotice(null)} aria-label="Закрыть">
+            ✕
+          </button>
         </div>
       )}
-      <div className="bubble-text">{message.text}</div>
-      <div className="bubble-meta">
-        {formatTime(message.created_at)}
-        {/* "Delivered to the server": the message has a server id. */}
-        {mine && <span title="Доставлено на сервер"> ✓</span>}
-      </div>
-    </div>
+
+      <Composer
+        chatId={chat.id}
+        meId={me.id}
+        members={chat.members}
+        replyTo={replyTo}
+        editing={editing}
+        draft={draft}
+        onDraftChange={setDraft}
+        onCancelReply={() => setReplyTo(null)}
+        onCancelEdit={stopEdit}
+        onSend={(text, attachments) => {
+          stickToBottom.current = true
+          props.onSend(text, attachments, replyTo)
+          setReplyTo(null)
+          setDraft('')
+        }}
+        onSaveEdit={(text) => {
+          const message = editing!
+          stopEdit()
+          void run(() => props.onEdit(message, text))
+        }}
+      />
+    </section>
   )
 }

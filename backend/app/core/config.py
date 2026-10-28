@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     # Browsers only send Secure cookies over HTTPS (localhost is exempt); enable in production.
     refresh_cookie_secure: bool = False
 
+    # Anti-spam: at most send_rate_limit messages per user per window.
+    send_rate_limit: int = 20
+    send_rate_window_seconds: int = 10
+
+    # Attachments are stored on the server's disk (a Docker volume in production).
+    upload_dir: str = "uploads"
+    max_upload_bytes: int = 10 * 1024 * 1024
+
 
 @lru_cache
 def get_settings() -> Settings:

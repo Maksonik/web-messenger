@@ -2,14 +2,13 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import type { ConnectionStatus } from '../realtime'
 import type { Chat, User } from '../types'
-import { chatAvatarSeed, chatTitle, formatShortDate, useDebounced } from '../utils'
+import { chatAvatarSeed, chatTitle, formatShortDate, messageSummary, useDebounced } from '../utils'
 import { Avatar } from './Avatar'
 
 interface Props {
   me: User
   chats: Chat[]
   activeChatId: number | null
-  unread: Record<number, number>
   status: ConnectionStatus
   onSelectChat: (chatId: number) => void
   onOpenDirect: (user: User) => void
@@ -32,11 +31,11 @@ function preview(chat: Chat, meId: number): string {
       : chat.type === 'group' && last.sender
         ? `${last.sender.display_name}: `
         : ''
-  return author + last.text
+  return last.deleted ? messageSummary(last) : author + messageSummary(last)
 }
 
 export function Sidebar(props: Props) {
-  const { me, chats, activeChatId, unread, status } = props
+  const { me, chats, activeChatId, status } = props
   const [query, setQuery] = useState('')
   const [people, setPeople] = useState<User[]>([])
   const debounced = useDebounced(query.trim())
@@ -86,7 +85,7 @@ export function Sidebar(props: Props) {
       <nav className="chat-list">
         {visibleChats.map((chat) => {
           const title = chatTitle(chat, me.id)
-          const count = unread[chat.id] ?? 0
+          const count = chat.unread_count
           return (
             <button
               key={chat.id}
@@ -99,6 +98,12 @@ export function Sidebar(props: Props) {
                   <span className="chat-item-title">
                     {chat.type === 'group' && <span className="group-mark">👥 </span>}
                     {title}
+                    {chat.muted && (
+                      <span className="muted-mark" title="Уведомления выключены">
+                        {' '}
+                        🔕
+                      </span>
+                    )}
                   </span>
                   {chat.last_message && (
                     <time className="muted">{formatShortDate(chat.last_message.created_at)}</time>
@@ -106,7 +111,9 @@ export function Sidebar(props: Props) {
                 </div>
                 <div className="chat-item-bottom">
                   <span className="chat-item-preview">{preview(chat, me.id)}</span>
-                  {count > 0 && <span className="unread">{count}</span>}
+                  {count > 0 && (
+                    <span className={`unread${chat.muted ? ' unread-muted' : ''}`}>{count}</span>
+                  )}
                 </div>
               </div>
             </button>

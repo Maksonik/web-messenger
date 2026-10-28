@@ -432,12 +432,192 @@ label {
 }
 
 .bubble {
+  position: relative;
   max-width: min(75%, 560px);
+  min-width: 0;
   align-self: flex-start;
   background: var(--bubble);
   border-radius: 14px 14px 14px 4px;
   padding: 6px 10px 4px;
   box-shadow: 0 1px 1px rgb(0 0 0 / 0.08);
+  transition: box-shadow 0.3s;
+}
+
+.bubble.mentioned {
+  box-shadow:
+    inset 3px 0 0 var(--accent),
+    0 1px 1px rgb(0 0 0 / 0.08);
+}
+
+.bubble.flash {
+  box-shadow: 0 0 0 3px var(--accent);
+}
+
+.bubble.deleted {
+  font-style: italic;
+  font-size: 14px;
+  padding: 6px 12px;
+  opacity: 0.8;
+}
+
+/* Hover toolbar: reply, react, edit, delete. */
+.bubble-actions {
+  position: absolute;
+  top: -14px;
+  right: 6px;
+  display: none;
+  gap: 2px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 4px;
+  box-shadow: var(--shadow);
+  z-index: 2;
+}
+
+.bubble:hover .bubble-actions,
+.bubble:focus-within .bubble-actions {
+  display: flex;
+}
+
+.bubble-actions button,
+.reaction-picker button {
+  border: none;
+  background: none;
+  padding: 2px 5px;
+  font-size: 14px;
+  border-radius: 999px;
+}
+
+.bubble-actions button:hover,
+.reaction-picker button:hover,
+.reaction-picker button.on {
+  background: var(--accent-soft);
+}
+
+.reaction-picker {
+  position: absolute;
+  top: 16px;
+  right: 6px;
+  display: flex;
+  gap: 2px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px;
+  box-shadow: var(--shadow);
+  z-index: 3;
+}
+
+.reaction-picker button {
+  font-size: 20px;
+}
+
+.reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.reaction {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 13px;
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  border: 1px solid var(--border);
+}
+
+.reaction.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.reply-quote {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  padding: 3px 8px;
+  margin: 2px 0 4px;
+  font-size: 13px;
+  min-width: 0;
+}
+
+.reply-quote:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.reply-quote strong {
+  color: var(--accent);
+}
+
+.reply-quote span,
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mention {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.read-mark {
+  color: var(--accent);
+}
+
+.attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 2px 0 4px;
+}
+
+.attachment-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.attachment-images img {
+  display: block;
+  max-width: min(320px, 100%);
+  max-height: 260px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.attachment-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel) 60%, transparent);
+  color: inherit;
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.attachment-file .grow {
+  display: flex;
+  flex-direction: column;
+}
+
+.attachment-icon {
+  font-size: 22px;
+}
+
+.attachment-name {
+  overflow-wrap: anywhere;
+  font-weight: 500;
 }
 
 .bubble.mine {
@@ -476,12 +656,109 @@ label {
 }
 
 .composer {
+  position: relative;
   display: flex;
+  flex-direction: column;
   gap: 8px;
-  align-items: flex-end;
   padding: 10px max(16px, calc((100% - 760px) / 2));
   background: var(--panel);
   border-top: 1px solid var(--border);
+}
+
+.composer-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.composer-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-left: 3px solid var(--accent);
+  padding: 2px 0 2px 10px;
+  font-size: 14px;
+  min-width: 0;
+}
+
+.composer-banner strong {
+  color: var(--accent);
+}
+
+.composer-banner-icon {
+  font-size: 18px;
+}
+
+.uploads {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.upload {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 260px;
+  padding: 4px 4px 4px 10px;
+  border-radius: 10px;
+  background: var(--panel-muted);
+  font-size: 13px;
+}
+
+.upload.error {
+  color: var(--danger);
+}
+
+.upload button {
+  border: none;
+  background: none;
+  padding: 0 4px;
+  color: var(--text-muted);
+}
+
+.mention-suggestions {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  max-width: 320px;
+}
+
+.mention-suggestions button {
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-radius: 0;
+  background: none;
+  padding: 6px 12px;
+}
+
+.mention-suggestions button:hover {
+  background: var(--panel-muted);
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 16px;
+  background: color-mix(in srgb, var(--danger) 12%, var(--panel));
+  font-size: 14px;
+}
+
+.unread-muted {
+  background: var(--text-muted);
+}
+
+.muted-mark {
+  font-size: 12px;
 }
 
 .composer textarea {

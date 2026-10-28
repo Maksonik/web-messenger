@@ -1,5 +1,6 @@
 import asyncio
 import os
+import tempfile
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -9,6 +10,9 @@ TEST_DATABASE_URL = os.environ.get(
 # Must be set before the app is imported: engine and settings are created at import time.
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["JWT_SECRET"] = "test-jwt-secret-that-is-at-least-32-bytes-long"
+# A separate Redis database, flushed after every test (rate-limit counters, pub/sub).
+os.environ["REDIS_URL"] = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/15")
+os.environ["UPLOAD_DIR"] = tempfile.mkdtemp(prefix="messenger-test-uploads-")
 
 import pytest  # noqa: E402
 from alembic import command  # noqa: E402
@@ -18,6 +22,7 @@ from sqlalchemy import make_url, text  # noqa: E402
 from sqlalchemy.ext.asyncio import create_async_engine  # noqa: E402
 
 from app.core.db import Base, engine  # noqa: E402
+from app.core.redis import redis_client  # noqa: E402
 from app.main import app  # noqa: E402
 from tests.helpers import ChatUser, bearer, register  # noqa: E402
 
@@ -44,6 +49,7 @@ async def _clean_tables() -> AsyncIterator[None]:
     tables = ", ".join(f'"{table.name}"' for table in Base.metadata.sorted_tables)
     async with engine.begin() as conn:
         await conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+    await redis_client.flushdb()
 
 
 @pytest.fixture

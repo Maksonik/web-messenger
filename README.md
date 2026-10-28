@@ -59,16 +59,42 @@ docker-compose.yml
   newest first (backed by a `pg_trgm` GIN index).
 - `GET /api/chats` includes each chat's `last_message` and is ordered by last activity.
 
+## Extensions
+
+- **Read status.** `POST /api/chats/{id}/read {message_id}` moves the member's read marker
+  forward. Members expose `last_read_message_id` (read receipts ✓✓), the chat list returns
+  `unread_count`, and others get a `read.updated` event.
+- **Edit / delete.** `PATCH|DELETE /api/chats/{id}/messages/{message_id}`. Only the author edits
+  (sets `edited_at`); the author or a group admin (moderation) deletes. Deletion is soft: a
+  "message deleted" placeholder stays, its text, reactions and files are removed.
+- **Reactions.** `PUT|DELETE /api/chats/{id}/messages/{message_id}/reactions/{emoji}` with
+  👍 ❤️ 😂 😮 😢 🔥; messages carry `reactions: [{emoji, count, user_ids}]`.
+- **Replies and mentions.** `reply_to_id` (same chat only) adds a `reply_to` preview.
+  `@username` of a chat member is stored as a mention (`mention_user_ids`).
+- **Rate limiting.** At most `SEND_RATE_LIMIT` (20) messages per `SEND_RATE_WINDOW_SECONDS`
+  (10) per user, counted in Redis across processes; over the limit: HTTP 429 or a
+  `rate_limited` WebSocket error.
+- **Mute.** `PUT /api/chats/{id}/mute {muted}`: a per-member flag; muted chats don't count
+  towards notifications (the unread counter in the tab title).
+- **Attachments.** `POST /api/chats/{id}/attachments` (multipart, up to 10 MB) stores the file
+  on the server's disk (`UPLOAD_DIR`, a Docker volume) and returns an id to pass in
+  `attachment_ids` when sending. Files are served from signed, expiring links
+  (`/api/attachments/{id}/{name}?expires=&signature=`) so `<img>` works without headers.
+  Only PNG/JPEG/GIF/WebP are shown inline; everything else is downloaded
+  (`Content-Disposition: attachment`, `nosniff`), so uploaded HTML/SVG can't run scripts.
+
 ## Realtime (WebSocket `/api/ws`)
 
 One connection per browser tab carries events for all of the user's chats.
 
 1. The client sends `{"type": "auth", "token": "<access token>"}`; the server answers `auth.ok`
    or closes the socket with code `4401`.
-2. `{"type": "message.send", "chat_id", "text", "client_msg_id"}` stores the message and
+2. `{"type": "message.send", "chat_id", "text", "client_msg_id", "reply_to_id"?,
+   "attachment_ids"?}` stores the message and
    answers `message.ack` (status "delivered to the server"); all chat members then get
    `message.new`. Errors come back as `error` events carrying the `client_msg_id`.
-3. Chat changes (created, renamed, members added/removed) are announced as `chat.updated`.
+3. Edits, deletions and reactions arrive as `message.updated`, read markers as
+   `read.updated`, chat changes (created, renamed, members added/removed) as `chat.updated`.
 
 Events are fanned out through Redis pub/sub, so several backend processes can serve
 WebSockets at once. The frontend keeps unconfirmed messages and resends them after a

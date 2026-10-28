@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import secrets
 from datetime import UTC, datetime, timedelta
 
@@ -52,3 +53,14 @@ def generate_refresh_token() -> str:
 
 def hash_refresh_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def sign_attachment(attachment_id: int, expires: int) -> str:
+    message = f"attachment:{attachment_id}:{expires}".encode()
+    return hmac.new(settings.jwt_secret.encode(), message, hashlib.sha256).hexdigest()[:32]
+
+
+def verify_attachment_signature(attachment_id: int, expires: int, signature: str) -> bool:
+    if expires < datetime.now(UTC).timestamp():
+        return False
+    return hmac.compare_digest(sign_attachment(attachment_id, expires), signature)

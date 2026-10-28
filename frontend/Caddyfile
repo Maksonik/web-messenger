@@ -4,6 +4,10 @@
 	encode gzip
 
 	handle /api/* {
+		# Attachments are limited to 10 MB by the backend; reject anything far bigger early.
+		request_body {
+			max_size 12MB
+		}
 		reverse_proxy backend:8000
 	}
 

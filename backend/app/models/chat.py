@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, func
+from sqlalchemy import BigInteger, DateTime, Enum, ForeignKey, String, false, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -53,6 +53,9 @@ class ChatMember(Base):
         default=MemberRole.member,
     )
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Read receipts: everything up to this message id counts as read by this member.
+    last_read_message_id: Mapped[int | None] = mapped_column(BigInteger)
+    muted: Mapped[bool] = mapped_column(default=False, server_default=false())
 
     chat: Mapped[Chat] = relationship(back_populates="members", lazy="raise")
     user: Mapped[User] = relationship(lazy="raise")

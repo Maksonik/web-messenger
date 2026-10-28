@@ -4,7 +4,8 @@ Protocol (JSON text frames):
   1. Client sends {"type": "auth", "token": "<access token>"} within AUTH_TIMEOUT_SECONDS.
      On success the server replies auth.ok, otherwise closes with code 4401.
   2. Client → server:
-       {"type": "message.send", "chat_id", "text", "client_msg_id": "<uuid>"}
+       {"type": "message.send", "chat_id", "text", "client_msg_id": "<uuid>",
+        "reply_to_id"?, "attachment_ids"?}
        {"type": "ping"}
   Server → client event types are listed in app.realtime.events.
 """
@@ -16,17 +17,19 @@ from typing import Annotated, Any, Literal
 
 import jwt
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, Field, TypeAdapter, ValidationError
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError, model_validator
 
 from app.core.db import SessionFactory
+from app.core.redis import redis_client
 from app.core.security import decode_access_token
 from app.models import User
 from app.realtime.bus import Connection, event_bus
 from app.realtime.events import message_payload, notify_new_message
-from app.schemas.message import MessageText
+from app.schemas.message import AttachmentIds, OptionalMessageText
 from app.schemas.user import UserRead
 from app.services import messages as messages_service
 from app.services.errors import ServiceError
+from app.services.rate_limit import check_send_rate
 
 router = APIRouter()
 
@@ -42,8 +45,16 @@ class AuthEvent(BaseModel):
 class SendMessageEvent(BaseModel):
     type: Literal["message.send"]
     chat_id: int
-    text: MessageText
+    text: OptionalMessageText = ""
     client_msg_id: uuid.UUID
+    reply_to_id: int | None = None
+    attachment_ids: AttachmentIds = []
+
+    @model_validator(mode="after")
+    def _not_empty(self) -> "SendMessageEvent":
+        if not self.text and not self.attachment_ids:
+            raise ValueError("A message needs text or attachments")
+        return self
 
 
 class PingEvent(BaseModel):
@@ -107,8 +118,15 @@ async def _send_message(connection: Connection, event: SendMessageEvent) -> None
     async with SessionFactory() as session:
         sender = await session.get_one(User, connection.user_id)
         try:
+            await check_send_rate(redis_client, sender.id)
             message, created = await messages_service.send_message(
-                session, event.chat_id, sender, event.text, event.client_msg_id
+                session,
+                event.chat_id,
+                sender,
+                event.text,
+                event.client_msg_id,
+                reply_to_id=event.reply_to_id,
+                attachment_ids=event.attachment_ids,
             )
         except ServiceError as exc:
             connection.send(_error(exc.code, exc.detail, str(event.client_msg_id)))

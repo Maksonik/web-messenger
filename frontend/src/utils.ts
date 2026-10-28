@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Chat, User } from './types'
+import type { Chat, Message, User } from './types'
 
 /** RFC 4122 v4 UUID. crypto.randomUUID only exists in secure contexts (HTTPS/localhost). */
 export function uuid(): string {
@@ -55,4 +55,19 @@ export function useDebounced<T>(value: T, delayMs = 300): T {
     return () => window.clearTimeout(timer)
   }, [value, delayMs])
   return debounced
+}
+
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} Б`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} КБ`
+  return `${(bytes / 1024 / 1024).toFixed(1)} МБ`
+}
+
+/** One-line description of a message for previews (chat list, reply banner). */
+export function messageSummary(message: Pick<Message, 'deleted' | 'text' | 'attachments'>): string {
+  if (message.deleted) return 'Сообщение удалено'
+  if (message.text) return message.text
+  const [first] = message.attachments
+  if (!first) return ''
+  return first.is_image ? '🖼 Фото' : `📎 ${first.filename}`
 }

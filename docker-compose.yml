@@ -32,6 +32,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env (see .env.example)}
       REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE:-false}
+      UPLOAD_DIR: /data/uploads
+    volumes:
+      - uploads-data:/data/uploads
     ports:
       - "127.0.0.1:8000:8000"
     healthcheck:
@@ -56,3 +59,4 @@ services:
 
 volumes:
   postgres-data:
+  uploads-data:

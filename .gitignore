@@ -223,3 +223,6 @@ __marimo__/
 
 # Playwright MCP snapshots and logs
 .playwright-mcp/
+
+# Attachment files stored by a locally running backend
+uploads/

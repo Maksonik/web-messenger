@@ -25,3 +25,13 @@ class ForbiddenError(ServiceError):
 class ConflictError(ServiceError):
     status_code = status.HTTP_409_CONFLICT
     code = "conflict"
+
+
+class PayloadTooLargeError(ServiceError):
+    status_code = status.HTTP_413_CONTENT_TOO_LARGE
+    code = "too_large"
+
+
+class RateLimitedError(ServiceError):
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+    code = "rate_limited"

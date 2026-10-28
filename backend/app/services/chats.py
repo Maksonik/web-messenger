@@ -1,43 +1,29 @@
+from collections.abc import Sequence
+
 from sqlalchemy import func, select
-from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import selectinload
 
-from app.models import Chat, ChatMember, ChatType, MemberRole, Message, User
+from app.models import Chat, ChatMember, ChatType, MemberRole, User
 from app.services.errors import ConflictError, ForbiddenError, NotFoundError, ServiceError
 
 _WITH_MEMBERS = selectinload(Chat.members).selectinload(ChatMember.user)
 
 
-async def list_user_chats(session: AsyncSession, user_id: int) -> list[tuple[Chat, Message | None]]:
-    """Returns the user's chats with their last message, most recently active first."""
-    chats = (
-        await session.scalars(
-            select(Chat)
-            .join(ChatMember)
-            .where(ChatMember.user_id == user_id)
-            .options(_WITH_MEMBERS)
-        )
-    ).all()
-    if not chats:
-        return []
-
-    last_messages = await session.scalars(
-        select(Message)
-        .ext(distinct_on(Message.chat_id))
-        .where(Message.chat_id.in_([chat.id for chat in chats]))
-        .order_by(Message.chat_id, Message.id.desc())
-        .options(joinedload(Message.sender))
+async def list_user_chats(session: AsyncSession, user_id: int) -> Sequence[Chat]:
+    result = await session.scalars(
+        select(Chat).join(ChatMember).where(ChatMember.user_id == user_id).options(_WITH_MEMBERS)
     )
-    last_by_chat = {message.chat_id: message for message in last_messages}
+    return result.all()
 
-    def last_activity(chat: Chat):
-        last = last_by_chat.get(chat.id)
-        return last.created_at if last else chat.created_at
 
-    ordered = sorted(chats, key=lambda chat: (last_activity(chat), chat.id), reverse=True)
-    return [(chat, last_by_chat.get(chat.id)) for chat in ordered]
+async def set_muted(session: AsyncSession, chat_id: int, user_id: int, muted: bool) -> bool:
+    """Mute is a per-member flag: muted chats don't raise unread notifications."""
+    _, member = await require_membership(session, chat_id, user_id)
+    member.muted = muted
+    await session.commit()
+    return muted
 
 
 async def get_chat(session: AsyncSession, chat_id: int, user_id: int) -> Chat:

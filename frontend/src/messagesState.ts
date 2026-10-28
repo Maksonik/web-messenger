@@ -26,6 +26,8 @@ export type MessagesAction =
     }
   | { type: 'message/acked'; clientMsgId: string; message: Message }
   | { type: 'message/received'; message: Message }
+  /** Edited, deleted or reactions changed: replaced in place, never inserted. */
+  | { type: 'message/updated'; message: Message }
 
 export const initialMessagesState: MessagesState = { byChat: {}, pending: [] }
 
@@ -87,5 +89,22 @@ export function messagesReducer(state: MessagesState, action: MessagesAction): M
     case 'message/acked':
     case 'message/received':
       return addMessage(state, action.message)
+    case 'message/updated': {
+      const updated = action.message
+      const history = state.byChat[updated.chat_id]
+      if (!history) return state
+      const items = history.items.map((m) => {
+        if (m.id === updated.id) return updated
+        // Keep quotes of the changed message in sync (edited text, "deleted").
+        if (m.reply_to?.id === updated.id) {
+          return {
+            ...m,
+            reply_to: { ...m.reply_to, text: updated.text, deleted: updated.deleted },
+          }
+        }
+        return m
+      })
+      return { ...state, byChat: { ...state.byChat, [updated.chat_id]: { ...history, items } } }
+    }
   }
 }

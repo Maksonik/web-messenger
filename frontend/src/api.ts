@@ -1,4 +1,4 @@
-import type { AuthResponse, Chat, Member, MessagePage, User } from './types'
+import type { Attachment, AuthResponse, Chat, Member, Message, MessagePage, User } from './types'
 
 export class ApiError extends Error {
   readonly status: number
@@ -67,13 +67,15 @@ async function errorMessage(response: Response): Promise<string> {
 
 async function request<T>(method: string, path: string, body?: unknown, retry = true): Promise<T> {
   const headers: Record<string, string> = {}
-  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  const isForm = body instanceof FormData
+  // FormData sets its own multipart Content-Type with the boundary.
+  if (body !== undefined && !isForm) headers['Content-Type'] = 'application/json'
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`
 
   const response = await fetch(path, {
     method,
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
   })
 
   if (response.status === 401 && retry && !path.startsWith('/api/auth/')) {
@@ -136,4 +138,30 @@ export const api = {
       'GET',
       `/api/chats/${chatId}/messages/search?${query({ q, before_id: beforeId, limit: 20 })}`,
     ),
+
+  editMessage: (chatId: number, messageId: number, text: string) =>
+    request<Message>('PATCH', `/api/chats/${chatId}/messages/${messageId}`, { text }),
+
+  deleteMessage: (chatId: number, messageId: number) =>
+    request<Message>('DELETE', `/api/chats/${chatId}/messages/${messageId}`),
+
+  setReaction: (chatId: number, messageId: number, emoji: string, on: boolean) =>
+    request<Message>(
+      on ? 'PUT' : 'DELETE',
+      `/api/chats/${chatId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`,
+    ),
+
+  markRead: (chatId: number, messageId: number) =>
+    request<{ last_read_message_id: number }>('POST', `/api/chats/${chatId}/read`, {
+      message_id: messageId,
+    }),
+
+  setMuted: (chatId: number, muted: boolean) =>
+    request<{ muted: boolean }>('PUT', `/api/chats/${chatId}/mute`, { muted }),
+
+  uploadAttachment: (chatId: number, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return request<Attachment>('POST', `/api/chats/${chatId}/attachments`, form)
+  },
 }

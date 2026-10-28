@@ -8,6 +8,7 @@ from httpx_ws import AsyncWebSocketSession, WebSocketDisconnect, aconnect_ws
 from httpx_ws.transport import ASGIWebSocketTransport
 
 from app.api import ws as ws_module
+from app.core.config import settings
 from app.main import app
 from app.realtime.bus import event_bus
 from tests.helpers import ChatUser, create_group
@@ -176,7 +177,14 @@ async def test_errors_keep_the_connection_open(client: AsyncClient, users) -> No
         error = await receive(ws)
         assert error["code"] == "invalid_event"
         assert error["client_msg_id"] == "abc"
-        assert "text" in error["detail"]
+        assert "client_msg_id" in error["detail"]
+
+        empty = send_event(foreign_chat["id"], "")
+        await ws.send_json(empty)
+        error = await receive(ws)
+        assert error["code"] == "invalid_event"
+        assert error["client_msg_id"] == empty["client_msg_id"]
+        assert "text or attachments" in error["detail"]
 
         event = send_event(foreign_chat["id"], "let me in")
         await ws.send_json(event)
@@ -208,3 +216,86 @@ async def test_chat_changes_are_announced(client: AsyncClient, users) -> None:
         # The removed user is told too, so their client can drop the chat.
         assert await receive(bob_ws) == {"type": "chat.updated", "chat_id": chat["id"]}
         assert await receive(carol_ws) == {"type": "chat.updated", "chat_id": chat["id"]}
+
+
+# --- stage 6 events
+
+
+async def test_edits_reactions_and_reads_are_pushed(client: AsyncClient, users) -> None:
+    alice, bob = users["alice"], users["bob"]
+    chat = await create_group(client, alice, bob)
+    message = (
+        await client.post(
+            f"/api/chats/{chat['id']}/messages", json={"text": "hi"}, headers=alice.headers
+        )
+    ).json()
+    url = f"/api/chats/{chat['id']}/messages/{message['id']}"
+
+    async with connect(alice) as alice_ws, connect(bob) as bob_ws:
+        await client.patch(url, json={"text": "hi there"}, headers=alice.headers)
+        updated = await receive(bob_ws)
+        assert updated["type"] == "message.updated"
+        assert updated["message"]["text"] == "hi there"
+        assert (await receive(alice_ws))["type"] == "message.updated"
+
+        await client.put(f"{url}/reactions/🔥", headers=bob.headers)
+        reacted = await receive(alice_ws)
+        assert reacted["message"]["reactions"] == [
+            {"emoji": "🔥", "count": 1, "user_ids": [bob.id]}
+        ]
+        await receive(bob_ws)
+
+        await client.post(
+            f"/api/chats/{chat['id']}/read", json={"message_id": message["id"]}, headers=bob.headers
+        )
+        assert await receive(alice_ws) == {
+            "type": "read.updated",
+            "chat_id": chat["id"],
+            "user_id": bob.id,
+            "last_read_message_id": message["id"],
+        }
+
+
+async def test_ws_send_with_reply_and_attachment(client: AsyncClient, users) -> None:
+    alice, bob = users["alice"], users["bob"]
+    chat = await create_group(client, alice, bob)
+    original = (
+        await client.post(
+            f"/api/chats/{chat['id']}/messages", json={"text": "photo?"}, headers=bob.headers
+        )
+    ).json()
+    attachment = (
+        await client.post(
+            f"/api/chats/{chat['id']}/attachments",
+            files={"file": ("notes.txt", b"hello", "text/plain")},
+            headers=alice.headers,
+        )
+    ).json()
+
+    async with connect(alice) as ws:
+        event = send_event(chat["id"], "")
+        event |= {"reply_to_id": original["id"], "attachment_ids": [attachment["id"]]}
+        await ws.send_json(event)
+        ack = next(e for e in [await receive(ws), await receive(ws)] if e["type"] == "message.ack")
+
+    assert ack["message"]["reply_to"]["id"] == original["id"]
+    assert ack["message"]["attachments"][0]["filename"] == "notes.txt"
+
+
+async def test_ws_send_is_rate_limited(
+    client: AsyncClient, users, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "send_rate_limit", 1)
+    alice = users["alice"]
+    chat = await create_group(client, alice)
+
+    async with connect(alice) as ws:
+        await ws.send_json(send_event(chat["id"], "first"))
+        await receive(ws)
+        await receive(ws)
+        second = send_event(chat["id"], "second")
+        await ws.send_json(second)
+        error = await receive(ws)
+
+    assert error["code"] == "rate_limited"
+    assert error["client_msg_id"] == second["client_msg_id"]
