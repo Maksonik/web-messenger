@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.api import auth, chats, health, users
+from app.api import auth, chats, health, messages, users
 from app.core.config import settings
 from app.core.db import engine
 from app.core.redis import redis_client
@@ -30,6 +30,7 @@ def create_app() -> FastAPI:
     api.include_router(auth.router)
     api.include_router(users.router)
     api.include_router(chats.router)
+    api.include_router(messages.router)
 
     app.include_router(health.router)
     app.include_router(api)

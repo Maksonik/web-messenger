@@ -11,14 +11,21 @@ from app.schemas.chat import (
     MemberAdd,
     MemberRead,
 )
+from app.schemas.message import MessageRead
 from app.services import chats as chats_service
 
 router = APIRouter(prefix="/chats", tags=["chats"])
 
 
-@router.get("", response_model=list[ChatRead])
-async def list_chats(session: SessionDep, user: CurrentUser) -> list[Chat]:
-    return list(await chats_service.list_user_chats(session, user.id))
+@router.get("")
+async def list_chats(session: SessionDep, user: CurrentUser) -> list[ChatRead]:
+    """The user's chats with their last message, most recently active first."""
+    return [
+        ChatRead.model_validate(chat).model_copy(
+            update={"last_message": MessageRead.model_validate(last) if last else None}
+        )
+        for chat, last in await chats_service.list_user_chats(session, user.id)
+    ]
 
 
 @router.post(

@@ -4,6 +4,7 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from app.models import ChatType, MemberRole
+from app.schemas.message import MessageRead
 from app.schemas.user import UserRead
 
 ChatTitle = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
@@ -25,6 +26,8 @@ class ChatRead(BaseModel):
     title: str | None
     created_at: datetime
     members: list[MemberRead]
+    # Only filled in the chat list.
+    last_message: MessageRead | None = None
 
 
 class DirectChatCreate(BaseModel):

@@ -39,6 +39,16 @@ docker-compose.yml
 - `POST /api/chats/{id}/members`, `DELETE /api/chats/{id}/members/{user_id}` — add/remove
   members (admin only); any member may remove themselves to leave, except the last admin.
 
+## Messages
+
+- `POST /api/chats/{id}/messages` — send a message. An optional `client_msg_id` (UUID) makes
+  retries idempotent: resending returns the stored message instead of a duplicate.
+- `GET /api/chats/{id}/messages?before_id=&limit=` — history in chronological order with
+  cursor pagination; to load older messages pass `before_id` = id of the oldest loaded one.
+- `GET /api/chats/{id}/messages/search?q=` — case-insensitive substring search within a chat,
+  newest first (backed by a `pg_trgm` GIN index).
+- `GET /api/chats` includes each chat's `last_message` and is ordered by last activity.
+
 ## Running with Docker
 
 ```bash

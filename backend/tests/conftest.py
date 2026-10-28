@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import create_async_engine  # noqa: E402
 
 from app.core.db import Base, engine  # noqa: E402
 from app.main import app  # noqa: E402
+from tests.helpers import ChatUser, bearer, register  # noqa: E402
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
@@ -50,3 +51,12 @@ async def client() -> AsyncIterator[AsyncClient]:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+async def users(client: AsyncClient) -> dict[str, ChatUser]:
+    result = {}
+    for name in ("alice", "bob", "carol", "dave"):
+        body = await register(client, name)
+        result[name] = ChatUser(body["user"]["id"], name, bearer(body["access_token"]))
+    return result

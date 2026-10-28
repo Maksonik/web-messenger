@@ -1,25 +1,43 @@
-from collections.abc import Sequence
-
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
-from app.models import Chat, ChatMember, ChatType, MemberRole, User
+from app.models import Chat, ChatMember, ChatType, MemberRole, Message, User
 from app.services.errors import ConflictError, ForbiddenError, NotFoundError, ServiceError
 
 _WITH_MEMBERS = selectinload(Chat.members).selectinload(ChatMember.user)
 
 
-async def list_user_chats(session: AsyncSession, user_id: int) -> Sequence[Chat]:
-    result = await session.scalars(
-        select(Chat)
-        .join(ChatMember)
-        .where(ChatMember.user_id == user_id)
-        .options(_WITH_MEMBERS)
-        .order_by(Chat.id.desc())
+async def list_user_chats(session: AsyncSession, user_id: int) -> list[tuple[Chat, Message | None]]:
+    """Returns the user's chats with their last message, most recently active first."""
+    chats = (
+        await session.scalars(
+            select(Chat)
+            .join(ChatMember)
+            .where(ChatMember.user_id == user_id)
+            .options(_WITH_MEMBERS)
+        )
+    ).all()
+    if not chats:
+        return []
+
+    last_messages = await session.scalars(
+        select(Message)
+        .ext(distinct_on(Message.chat_id))
+        .where(Message.chat_id.in_([chat.id for chat in chats]))
+        .order_by(Message.chat_id, Message.id.desc())
+        .options(joinedload(Message.sender))
     )
-    return result.all()
+    last_by_chat = {message.chat_id: message for message in last_messages}
+
+    def last_activity(chat: Chat):
+        last = last_by_chat.get(chat.id)
+        return last.created_at if last else chat.created_at
+
+    ordered = sorted(chats, key=lambda chat: (last_activity(chat), chat.id), reverse=True)
+    return [(chat, last_by_chat.get(chat.id)) for chat in ordered]
 
 
 async def get_chat(session: AsyncSession, chat_id: int, user_id: int) -> Chat:
@@ -103,7 +121,7 @@ async def add_member(
 async def remove_member(session: AsyncSession, chat_id: int, actor_id: int, user_id: int) -> None:
     """Admins can remove anyone; any member can remove themselves (leave)."""
     if user_id == actor_id:
-        await _require_membership(session, chat_id, actor_id, group_only=True)
+        await require_membership(session, chat_id, actor_id, group_only=True)
     else:
         await _require_group_admin(session, chat_id, actor_id)
 
@@ -132,7 +150,7 @@ async def _load_chat(session: AsyncSession, chat_id: int) -> Chat:
     )
 
 
-async def _require_membership(
+async def require_membership(
     session: AsyncSession, chat_id: int, user_id: int, *, group_only: bool = False
 ) -> tuple[Chat, ChatMember]:
     member = await session.get(ChatMember, (chat_id, user_id))
@@ -145,7 +163,7 @@ async def _require_membership(
 
 
 async def _require_group_admin(session: AsyncSession, chat_id: int, user_id: int) -> Chat:
-    chat, member = await _require_membership(session, chat_id, user_id, group_only=True)
+    chat, member = await require_membership(session, chat_id, user_id, group_only=True)
     if member.role != MemberRole.admin:
         raise ForbiddenError("Only chat admins can do this")
     return chat

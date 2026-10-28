@@ -1,35 +1,6 @@
-from dataclasses import dataclass
-
-import pytest
 from httpx import AsyncClient
 
-from tests.helpers import bearer, register
-
-
-@dataclass
-class ChatUser:
-    id: int
-    username: str
-    headers: dict[str, str]
-
-
-@pytest.fixture
-async def users(client: AsyncClient) -> dict[str, ChatUser]:
-    result = {}
-    for name in ("alice", "bob", "carol", "dave"):
-        body = await register(client, name)
-        result[name] = ChatUser(body["user"]["id"], name, bearer(body["access_token"]))
-    return result
-
-
-async def create_group(client: AsyncClient, owner: ChatUser, *members: ChatUser) -> dict:
-    response = await client.post(
-        "/api/chats/group",
-        json={"title": "Team", "member_ids": [m.id for m in members]},
-        headers=owner.headers,
-    )
-    assert response.status_code == 201, response.text
-    return response.json()
+from tests.helpers import ChatUser, create_group
 
 
 def member_roles(chat: dict) -> dict[str, str]:
