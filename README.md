@@ -29,6 +29,16 @@ docker-compose.yml
   single-use (rotated on every refresh) and stored only as SHA-256 hashes.
 - `POST /api/auth/logout` revokes the refresh token and clears the cookie.
 
+## Chats
+
+- `GET /api/chats` — the user's chats with members; `GET /api/chats/{id}` — one chat
+  (404 for non-members).
+- `POST /api/chats/direct` — get or create the 1-1 chat with a user (one chat per pair).
+- `POST /api/chats/group` — create a group; the creator becomes its admin.
+- `PATCH /api/chats/{id}` — rename a group (admin only).
+- `POST /api/chats/{id}/members`, `DELETE /api/chats/{id}/members/{user_id}` — add/remove
+  members (admin only); any member may remove themselves to leave, except the last admin.
+
 ## Running with Docker
 
 ```bash
