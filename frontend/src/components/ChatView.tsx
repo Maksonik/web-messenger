@@ -138,63 +138,79 @@ export function ChatView(props: Props) {
       </header>
 
       <div className="chat-body">
-        <div className="messages" ref={listRef} onScroll={onScroll}>
-          {history?.hasMore && (
-            <button className="load-more" onClick={loadMore} disabled={history.loadingMore}>
-              {history.loadingMore ? 'Загрузка…' : 'Загрузить ещё'}
-            </button>
-          )}
-          {!history && <p className="empty-hint">Загрузка…</p>}
-          {history && items.length === 0 && pending.length === 0 && (
-            <p className="empty-hint">Сообщений пока нет. Напишите первым!</p>
-          )}
+        <div
+          className="messages"
+          ref={listRef}
+          onScroll={onScroll}
+          // Images grow the list after they load; stay pinned to the bottom if we were there.
+          onLoadCapture={() => {
+            const list = listRef.current
+            if (list && stickToBottom.current) list.scrollTop = list.scrollHeight
+          }}
+        >
+          <div className="messages-column">
+            {history?.hasMore && (
+              <button className="load-more" onClick={loadMore} disabled={history.loadingMore}>
+                {history.loadingMore ? 'Загрузка…' : 'Загрузить ещё'}
+              </button>
+            )}
+            {!history && <p className="empty-hint">Загрузка…</p>}
+            {history && items.length === 0 && pending.length === 0 && (
+              <p className="empty-hint">Сообщений пока нет. Напишите первым!</p>
+            )}
 
-          {items.map((message, index) => (
-            <MessageBubble
-              key={message.id}
-              message={message}
-              meId={me.id}
-              members={chat.members}
-              showAuthor={
-                chat.type === 'group' && items[index - 1]?.sender?.id !== message.sender?.id
-              }
-              canDelete={message.sender?.id === me.id || isAdmin}
-              onReply={() => {
-                if (editing) stopEdit()
-                setReplyTo(message)
-              }}
-              onEdit={() => startEdit(message)}
-              onDelete={() => {
-                if (window.confirm('Удалить сообщение?')) void run(() => props.onDelete(message))
-              }}
-              onToggleReaction={(emoji, on) => run(() => props.onReact(message, emoji, on))}
-              onJumpTo={jumpTo}
-            />
-          ))}
-          {pending.map((p) => (
-            <div key={p.clientMsgId} className="bubble mine pending">
-              {p.replyTo && <ReplyQuote reply={p.replyTo} onClick={() => jumpTo(p.replyTo!.id)} />}
-              <AttachmentList attachments={p.attachments} />
-              {p.text && (
-                <div className="bubble-text">
-                  <MessageText text={p.text} members={chat.members} />
-                </div>
-              )}
-              <div className="bubble-meta">
-                {p.status === 'failed' ? (
-                  <button
-                    className="retry"
-                    onClick={() => props.onRetry(p.clientMsgId)}
-                    title={p.error}
-                  >
-                    ⚠ {p.error ?? 'не отправлено'} — повторить
-                  </button>
-                ) : (
-                  <span title="Отправляется">{formatTime(p.createdAt)} 🕓</span>
+            {items.map((message, index) => (
+              <MessageBubble
+                key={message.id}
+                message={message}
+                meId={me.id}
+                members={chat.members}
+                showAuthor={
+                  // A deleted placeholder has no author line, so it doesn't continue a run.
+                  chat.type === 'group' &&
+                  (items[index - 1]?.sender?.id !== message.sender?.id ||
+                    !!items[index - 1]?.deleted)
+                }
+                canDelete={message.sender?.id === me.id || isAdmin}
+                onReply={() => {
+                  if (editing) stopEdit()
+                  setReplyTo(message)
+                }}
+                onEdit={() => startEdit(message)}
+                onDelete={() => {
+                  if (window.confirm('Удалить сообщение?')) void run(() => props.onDelete(message))
+                }}
+                onToggleReaction={(emoji, on) => run(() => props.onReact(message, emoji, on))}
+                onJumpTo={jumpTo}
+              />
+            ))}
+            {pending.map((p) => (
+              <div key={p.clientMsgId} className="bubble mine pending">
+                {p.replyTo && (
+                  <ReplyQuote reply={p.replyTo} onClick={() => jumpTo(p.replyTo!.id)} />
                 )}
+                <AttachmentList attachments={p.attachments} />
+                {p.text && (
+                  <div className="bubble-text">
+                    <MessageText text={p.text} members={chat.members} />
+                  </div>
+                )}
+                <div className="bubble-meta">
+                  {p.status === 'failed' ? (
+                    <button
+                      className="retry"
+                      onClick={() => props.onRetry(p.clientMsgId)}
+                      title={p.error}
+                    >
+                      ⚠ {p.error ?? 'не отправлено'} — повторить
+                    </button>
+                  ) : (
+                    <span title="Отправляется">{formatTime(p.createdAt)} 🕓</span>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
 
         {searchOpen && <MessageSearch chatId={chat.id} onClose={() => setSearchOpen(false)} />}

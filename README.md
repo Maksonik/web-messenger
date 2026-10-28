@@ -1,11 +1,107 @@
 # web-messenger
-Real-time web messenger with private and group chats, message history, WebSocket communication, and basic moderation.
 
-## Stack
+Real-time web messenger with private and group chats, message history, WebSocket delivery
+and basic moderation. Course project for VK Education.
 
-- **Backend:** FastAPI, SQLAlchemy 2 (async) + PostgreSQL, Alembic, Redis (pub/sub)
-- **Frontend:** React + Vite + TypeScript
-- **Infra:** Docker Compose, Caddy (serves the frontend and proxies `/api` to the backend)
+![Group chat](docs/screenshots/chat.png)
+
+## Demo video
+
+Two users side by side (1:48, no sound): registration, real-time delivery, read receipts,
+replies, reactions, mentions, attachments, group management and moderation.
+
+[![Demo video](docs/screenshots/demo-preview.jpg)](docs/demo.mp4)
+
+▶ [Watch the video (docs/demo.mp4)](docs/demo.mp4)
+
+## Quick start
+
+Requires Docker.
+
+```bash
+cp .env.example .env    # then put a random value into JWT_SECRET, e.g.:
+                        # python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+docker compose up -d --build
+docker compose exec backend python -m app.scripts.seed_demo --reset   # optional demo data
+```
+
+- App: http://localhost:8080
+- API docs (Swagger): http://127.0.0.1:8000/docs
+- Demo accounts (after seeding): `alice`, `bob`, `kate`, `dima`, password `demo-password`.
+  To chat as two users at once, use two browsers or a normal and a private window:
+  the session cookie is shared between tabs of one browser profile.
+
+## Features
+
+**MVP**
+
+- [x] Registration and login: JWT access token + rotating refresh token (httpOnly cookie)
+- [x] Chat list; direct 1-1 chats; group chats with a title
+- [x] Real-time messages over WebSocket; history with "load more" (cursor pagination upwards);
+      "delivered" status once the server has stored the message
+- [x] Members: only an admin adds or removes group members
+- [x] Search within a chat by a plain string
+
+**Extensions**
+
+- [x] "Read" status per user (read receipts ✓✓, unread counters)
+- [x] Edit and delete messages, with an "edited" mark; group admins can delete any message
+- [x] Reactions: 👍 ❤️ 😂 😮 😢 🔥
+- [x] Attachments: images and files stored on the server's disk
+- [x] @mentions and replies
+- [x] Mute (per-chat notification flag)
+- [x] Anti-spam: rate limit on sending
+- [ ] LLM summarizer (not planned: the project avoids paid external services)
+
+**UI:** login screen, chat list with search, chat window with "load more", modals for creating
+a group and managing members. Works on phones too:
+
+<p>
+  <img src="docs/screenshots/mobile-list.png" alt="Chat list on a phone" width="260">
+  <img src="docs/screenshots/mobile-chat.png" alt="Chat on a phone" width="260">
+</p>
+
+## Architecture
+
+```mermaid
+flowchart LR
+    B["Browser<br/>React SPA"] -- "HTTP + WebSocket" --> C["Caddy<br/>static files, reverse proxy"]
+    C -- "/api, /api/ws" --> A["FastAPI backend"]
+    A -- SQL --> P[("PostgreSQL")]
+    A -- "pub/sub, rate limits" --> R[("Redis")]
+    A -- "attachments" --> U[("uploads volume")]
+```
+
+Sending a message:
+
+```mermaid
+sequenceDiagram
+    participant S as Sender
+    participant A as Backend
+    participant D as PostgreSQL
+    participant R as Redis
+    participant M as Other members
+    S->>A: message.send (client_msg_id)
+    A->>A: rate limit, membership check
+    A->>D: INSERT (idempotent per client_msg_id)
+    A-->>S: message.ack = "delivered to the server"
+    A->>R: PUBLISH message.new
+    R-->>A: every backend process receives it
+    A-->>M: message.new to connected members
+```
+
+Key decisions:
+
+- **WebSocket, one connection per tab**, multiplexing all chats. REST handles everything else
+  (history, search, edits), and both use the same service layer.
+- **Redis pub/sub** fans events out, so the backend can run as several processes/containers.
+- **Idempotent sending**: the client generates `client_msg_id`, keeps unconfirmed messages and
+  resends them after a reconnect without creating duplicates.
+- **Cursor pagination** (`before_id`) instead of OFFSET: stable while new messages arrive.
+- **Read status as one marker per member** (`last_read_message_id`) instead of a row per message.
+- **Search** via `ILIKE` backed by a `pg_trgm` GIN index.
+- **Attachments on local disk**, served through signed expiring links; only raster images are
+  displayed inline, other files are downloaded, so uploaded HTML/SVG can't run scripts.
 
 ## Project layout
 
@@ -18,17 +114,21 @@ backend/
     schemas/    Pydantic request/response models
     services/   business logic shared by REST and WebSocket
     realtime/   event bus (Redis pub/sub → WebSocket connections)
+    scripts/    demo data
   alembic/      database migrations
-  tests/
+  tests/        pytest: API, WebSocket and realtime tests against real Postgres and Redis
 frontend/
   src/
     api.ts            REST client (access token in memory, refresh via cookie)
     realtime.ts       WebSocket client with auto-reconnect
     messagesState.ts  messages reducer (history, pending messages)
     components/       UI
-  Caddyfile           production web server config
+  Caddyfile           web server config for the Docker image
 docker-compose.yml
+.github/workflows/    CI: tests and linters for backend and frontend
 ```
+
+# API reference
 
 ## Authentication
 
@@ -100,17 +200,9 @@ Events are fanned out through Redis pub/sub, so several backend processes can se
 WebSockets at once. The frontend keeps unconfirmed messages and resends them after a
 reconnect; `client_msg_id` makes that safe from duplicates.
 
-## Running with Docker
+# Development
 
-```bash
-cp .env.example .env   # then set JWT_SECRET
-docker compose up -d --build
-```
-
-- App: http://localhost:8080
-- API docs: http://127.0.0.1:8000/docs
-
-## Local development
+## Running without Docker
 
 Requires [uv](https://docs.astral.sh/uv/) and Docker.
 
@@ -132,7 +224,7 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
-### Tests and linting
+## Tests and linting
 
 Tests expect Postgres and Redis from `docker compose` to be running. They use a separate
 `messenger_test` database that is recreated and migrated on every run.
@@ -147,7 +239,7 @@ npm run build      # type-check + production build
 npm run lint && npm run format:check
 ```
 
-### Migrations
+## Migrations
 
 ```bash
 cd backend

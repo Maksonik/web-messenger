@@ -148,106 +148,108 @@ export function Composer(props: Props) {
 
   return (
     <form className="composer" onSubmit={submit}>
-      {(replyTo || editing) && (
-        <div className="composer-banner">
-          <span className="composer-banner-icon">{editing ? '✏️' : '↩'}</span>
-          <div className="grow">
-            <strong>
-              {editing
-                ? 'Редактирование'
-                : `Ответ: ${replyTo!.sender?.display_name ?? 'удалённый пользователь'}`}
-            </strong>
-            <div className="muted ellipsis">{messageSummary((editing ?? replyTo)!)}</div>
-          </div>
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Отменить"
-            onClick={editing ? props.onCancelEdit : props.onCancelReply}
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {uploads.length > 0 && (
-        <ul className="uploads">
-          {uploads.map((u) => (
-            <li key={u.localId} className={`upload ${u.status}`}>
-              <span className="ellipsis">{u.name}</span>
-              <span className="muted">
-                {u.status === 'uploading'
-                  ? 'загрузка…'
-                  : u.status === 'error'
-                    ? `ошибка: ${u.error}`
-                    : formatFileSize(u.size)}
-              </span>
-              <button
-                type="button"
-                aria-label={`Убрать ${u.name}`}
-                onClick={() => setUploads((prev) => prev.filter((x) => x.localId !== u.localId))}
-              >
-                ✕
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {suggestions.length > 0 && (
-        <ul className="mention-suggestions">
-          {suggestions.map((m) => (
-            <li key={m.user.id}>
-              <button type="button" onClick={() => insertMention(m.user.username)}>
-                <strong>{m.user.display_name}</strong>
-                <span className="muted"> @{m.user.username}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <div className="composer-row">
-        {!editing && (
-          <>
+      <div className="composer-inner">
+        {(replyTo || editing) && (
+          <div className="composer-banner">
+            <span className="composer-banner-icon">{editing ? '✏️' : '↩'}</span>
+            <div className="grow">
+              <strong>
+                {editing
+                  ? 'Редактирование'
+                  : `Ответ: ${replyTo!.sender?.display_name ?? 'удалённый пользователь'}`}
+              </strong>
+              <div className="muted ellipsis">{messageSummary((editing ?? replyTo)!)}</div>
+            </div>
             <button
               type="button"
               className="icon-button"
-              title="Прикрепить файл"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploads.length >= MAX_ATTACHMENTS}
+              aria-label="Отменить"
+              onClick={editing ? props.onCancelEdit : props.onCancelReply}
             >
-              📎
+              ✕
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              hidden
-              onChange={(e) => {
-                addFiles([...(e.target.files ?? [])])
-                e.target.value = ''
-              }}
-            />
-          </>
+          </div>
         )}
-        <textarea
-          ref={textareaRef}
-          value={draft}
-          onChange={(e) => {
-            props.onDraftChange(e.target.value)
-            updateMentionQuery(e.target.value, e.target.selectionStart)
-          }}
-          onKeyDown={onKeyDown}
-          onPaste={onPaste}
-          placeholder="Сообщение"
-          rows={1}
-          maxLength={4000}
-          autoFocus
-        />
-        <button className="primary" type="submit" disabled={!canSubmit}>
-          {editing ? 'Сохранить' : 'Отправить'}
-        </button>
+
+        {uploads.length > 0 && (
+          <ul className="uploads">
+            {uploads.map((u) => (
+              <li key={u.localId} className={`upload ${u.status}`}>
+                <span className="ellipsis">{u.name}</span>
+                <span className="muted">
+                  {u.status === 'uploading'
+                    ? 'загрузка…'
+                    : u.status === 'error'
+                      ? `ошибка: ${u.error}`
+                      : formatFileSize(u.size)}
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Убрать ${u.name}`}
+                  onClick={() => setUploads((prev) => prev.filter((x) => x.localId !== u.localId))}
+                >
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {suggestions.length > 0 && (
+          <ul className="mention-suggestions">
+            {suggestions.map((m) => (
+              <li key={m.user.id}>
+                <button type="button" onClick={() => insertMention(m.user.username)}>
+                  <strong>{m.user.display_name}</strong>
+                  <span className="muted"> @{m.user.username}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="composer-row">
+          {!editing && (
+            <>
+              <button
+                type="button"
+                className="icon-button"
+                title="Прикрепить файл"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploads.length >= MAX_ATTACHMENTS}
+              >
+                📎
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                hidden
+                onChange={(e) => {
+                  addFiles([...(e.target.files ?? [])])
+                  e.target.value = ''
+                }}
+              />
+            </>
+          )}
+          <textarea
+            ref={textareaRef}
+            value={draft}
+            onChange={(e) => {
+              props.onDraftChange(e.target.value)
+              updateMentionQuery(e.target.value, e.target.selectionStart)
+            }}
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+            placeholder="Сообщение"
+            rows={1}
+            maxLength={4000}
+            autoFocus
+          />
+          <button className="primary" type="submit" disabled={!canSubmit}>
+            {editing ? 'Сохранить' : 'Отправить'}
+          </button>
+        </div>
       </div>
     </form>
   )

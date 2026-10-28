@@ -41,3 +41,15 @@ def remove_files(storage_keys: list[str]) -> None:
             path_for(key).unlink(missing_ok=True)
         except OSError:
             logger.exception("Could not delete attachment file %s", key)
+
+
+def clear_all() -> None:
+    """Deletes every stored file (the directory itself may be a volume mount point)."""
+    root = _root()
+    if not root.exists():
+        return
+    for child in root.iterdir():
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
