@@ -218,3 +218,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Playwright MCP snapshots and logs
+.playwright-mcp/
